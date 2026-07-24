@@ -13,6 +13,20 @@ device paths, permissions, and even which mechanism your printer expects vary
 by model and distro. Treat the defaults below as a starting point, not a
 guarantee.
 
+## 0. Set an auth token (recommended)
+
+The agent only listens on `127.0.0.1`, so it's not reachable over the network
+— but it *is* reachable from anything else running in the same browser on
+that machine, including a malicious page in another tab, since it has no
+access control by default. Close that off:
+
+1. In the app: **Settings → Thermal Printer → Print Agent Token** → click
+   **Generate**, then **Save Settings**.
+2. Pass the same value to the agent via `PRINT_AGENT_TOKEN` (see step 3 below).
+
+If you skip this, the agent still works — it just trusts any request that
+reaches it.
+
 ## 1. Find your printer
 
 ```bash
@@ -64,6 +78,12 @@ the queue name with an `lp:` prefix:
 PRINTER_DEVICE=lp:MyThermalPrinter php -S 127.0.0.1:9100 bin/print-agent.php
 ```
 
+With the token from step 0 (combine env vars as needed):
+
+```bash
+PRINT_AGENT_TOKEN=paste-the-generated-token-here php -S 127.0.0.1:9100 bin/print-agent.php
+```
+
 ## 4. Keep it running (systemd)
 
 A bare terminal process dies when the terminal closes or the machine reboots.
@@ -80,6 +100,7 @@ Type=simple
 User=YOUR_USERNAME
 WorkingDirectory=/path/to/Bar
 Environment=PRINTER_DEVICE=/dev/usb/lp0
+Environment=PRINT_AGENT_TOKEN=paste-the-generated-token-here
 ExecStart=/usr/bin/php -S 127.0.0.1:9100 bin/print-agent.php
 Restart=on-failure
 
@@ -128,6 +149,10 @@ Thermal Printer" button on the POS receipt screen will work.
 - **"Could not open printer device"** — check `PRINTER_DEVICE` points at a
   path that exists (`ls /dev/usb/lp*`) and that the agent's user has
   permission to write to it (see step 2).
+- **"Invalid or missing print agent token"** — the value in Settings →
+  Thermal Printer doesn't match the agent's `PRINT_AGENT_TOKEN` env var.
+  Regenerate one and update both places, or clear the Settings field to
+  turn the check off entirely.
 - **Garbled/wrong characters print** — the receipt uses plain ASCII (`NGN
   1,234.50` instead of `₦1,234.50`) specifically to avoid this, since most
   thermal printers use a single-byte codepage that can't render the ₦ symbol.

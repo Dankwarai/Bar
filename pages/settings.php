@@ -10,7 +10,7 @@ $error   = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
-    $fields = ['bar_name', 'bar_address', 'bar_url', 'tax_rate', 'receipt_footer', 'qr_message'];
+    $fields = ['bar_name', 'bar_address', 'bar_url', 'tax_rate', 'receipt_footer', 'qr_message', 'print_agent_token'];
     try {
         $stmt = db()->prepare("INSERT INTO bar_settings (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
         foreach ($fields as $field) {
@@ -119,6 +119,26 @@ $g = fn(string $key, string $default = '') => $settings[$key] ?? $default;
             </div>
         </div>
 
+        <!-- Thermal Printer -->
+        <div class="card">
+            <h3 class="font-semibold mb-4 flex items-center gap-2">
+                <span class="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center text-gray-600 text-sm"><i class="ri-printer-cloud-line"></i></span>
+                Thermal Printer
+            </h3>
+            <div class="form-group mb-0">
+                <label class="form-label">Print Agent Token <span class="text-gray-400 font-normal">(optional, recommended)</span></label>
+                <div class="flex gap-2">
+                    <input type="text" name="print_agent_token" id="printAgentToken" class="form-input font-mono text-sm" value="<?= e($g('print_agent_token')) ?>" maxlength="64" placeholder="leave blank to disable authentication">
+                    <button type="button" onclick="generatePrintToken()" class="btn btn-outline flex-shrink-0">Generate</button>
+                </div>
+                <p class="text-xs text-gray-400 mt-1">
+                    Shared secret between the POS page and <code class="bg-gray-100 px-1 rounded">bin/print-agent.php</code> (see <code class="bg-gray-100 px-1 rounded">PRINTING.md</code>).
+                    Without it, anything running in the same browser as the POS terminal could trigger a print. Set a value here, then start the
+                    agent with the same value: <code class="bg-gray-100 px-1 rounded">PRINT_AGENT_TOKEN=... php -S 127.0.0.1:9100 bin/print-agent.php</code>.
+                </p>
+            </div>
+        </div>
+
         <div class="flex items-center gap-3">
             <button type="submit" class="btn btn-primary">
                 <i class="ri-save-line"></i> Save Settings
@@ -127,4 +147,12 @@ $g = fn(string $key, string $default = '') => $settings[$key] ?? $default;
         </div>
     </form>
 </div>
+<script>
+function generatePrintToken() {
+    var bytes = new Uint8Array(24);
+    crypto.getRandomValues(bytes);
+    var token = Array.from(bytes, function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+    document.getElementById('printAgentToken').value = token;
+}
+</script>
 <?php if (!empty($_standalone)) require __DIR__ . '/../includes/footer.php'; ?>

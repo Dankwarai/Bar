@@ -27,11 +27,18 @@
  * printer, distro, and udev configuration. You will likely need to adjust
  * PRINTER_DEVICE and/or grant this process permission to write to it (e.g.
  * add the running user to the `lp` group, or add a udev rule).
+ *
+ * Auth — set PRINT_AGENT_TOKEN to the same value as Settings → Thermal
+ * Printer → Print Agent Token in the app. Without it, anything running in
+ * the same browser as the POS terminal (e.g. a malicious page in another
+ * tab) could silently trigger a print — this agent has no other access
+ * control since it only binds to 127.0.0.1, not the network.
+ *   PRINT_AGENT_TOKEN=abc123 php -S 127.0.0.1:9100 bin/print-agent.php
  */
 
-header('Access-Control-Allow-Origin: *'); // the POS page and this agent are on different origins (app host vs 127.0.0.1)
+header('Access-Control-Allow-Origin: *'); // the POS page and this agent are on different origins (app host vs 127.0.0.1) — the real access control is the PRINT_AGENT_TOKEN check below, not CORS
 header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Headers: Content-Type, X-Print-Agent-Token');
 header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -44,6 +51,15 @@ $path = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
 if ($_SERVER['REQUEST_METHOD'] !== 'POST' || $path !== '/print') {
     http_response_code(404);
     exit(json_encode(['ok' => false, 'error' => 'Not found. POST raw ESC/POS bytes (base64-encoded) to /print.']));
+}
+
+$expectedToken = getenv('PRINT_AGENT_TOKEN');
+if ($expectedToken !== false && $expectedToken !== '') {
+    $givenToken = $_SERVER['HTTP_X_PRINT_AGENT_TOKEN'] ?? '';
+    if (!hash_equals($expectedToken, $givenToken)) {
+        http_response_code(403);
+        exit(json_encode(['ok' => false, 'error' => 'Invalid or missing print agent token.']));
+    }
 }
 
 $body = json_decode(file_get_contents('php://input'), true);

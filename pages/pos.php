@@ -924,6 +924,11 @@ function updateDiscountLabel() {
 // agent is a separate localhost-only process because a browser can't write to
 // a USB device directly.
 var PRINT_AGENT_URL = 'http://127.0.0.1:9100/print';
+// Shared secret configured in Settings → Thermal Printer — must match the
+// print-agent's own PRINT_AGENT_TOKEN env var. Blank means the agent runs
+// without authentication (fine on a trusted single-purpose machine, weaker
+// if that browser ever visits the open web).
+var PRINT_AGENT_TOKEN = <?= json_encode(getSetting('print_agent_token', '')) ?>;
 
 function printThermal(btn) {
     var statusEl = document.getElementById('thermalPrintStatus');
@@ -931,9 +936,12 @@ function printThermal(btn) {
     btn.disabled = true;
     if (statusEl) { statusEl.textContent = 'Sending to printer…'; statusEl.className = 'text-xs mt-2 text-gray-400'; }
 
+    var headers = { 'Content-Type': 'application/json' };
+    if (PRINT_AGENT_TOKEN) headers['X-Print-Agent-Token'] = PRINT_AGENT_TOKEN;
+
     fetch(PRINT_AGENT_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify({ data: payload })
     })
     .then(function(r) { return r.json().then(function(json) { return { ok: r.ok, json: json }; }); })
