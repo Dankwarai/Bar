@@ -1,0 +1,32 @@
+# Block execution of any server-side scripts uploaded here.
+# Uploaded files must NEVER be executed as code.
+
+# Apache 2.4+
+<IfModule mod_authz_core.c>
+    <FilesMatch "\.(php\d?|phtml|phar|shtml|cgi|pl|py|rb|asp|aspx|jsp|cfm|exe|sh|bash)$">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+
+# Apache 2.2 fallback
+<IfModule !mod_authz_core.c>
+    <FilesMatch "\.(php\d?|phtml|phar|shtml|cgi|pl|py|rb|asp|aspx|jsp|cfm|exe|sh|bash)$">
+        Order allow,deny
+        Deny from all
+    </FilesMatch>
+</IfModule>
+
+# Belt-and-suspenders: disable PHP engine for this directory
+<IfModule mod_php8.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+
+# Prevent MIME-type sniffing
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+</IfModule>
+
+Options -Indexes -ExecCGI

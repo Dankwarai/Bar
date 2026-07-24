@@ -1,0 +1,26 @@
+# Environment & credentials — NEVER commit these
+.env
+.env.*
+!.env.example
+
+# Uploaded files — large binaries, user content
+public/uploads/*
+!public/uploads/.htaccess
+!public/uploads/.gitkeep
+
+# PHP runtime
+*.log
+/vendor/
+composer.lock
+
+# PHPUnit runtime artifacts
+.phpunit.result.cache
+/.phpunit.cache/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

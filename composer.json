@@ -1,0 +1,11 @@
+{
+    "name": "bar/management-system",
+    "description": "Bar Management System",
+    "type": "project",
+    "require-dev": {
+        "phpunit/phpunit": "^11"
+    },
+    "scripts": {
+        "test": "phpunit"
+    }
+}
