@@ -62,10 +62,16 @@ function buildReceiptEscPos(array $order, array $items, string $barName, string 
 
     $r->line(str_repeat('-', 32));
 
-    $subtotal = (float)($order['subtotal'] ?? $order['total']);
-    $tax      = (float)($order['tax_amount'] ?? 0);
+    // order.subtotal is stored AFTER discount — add discount_amount back to show
+    // the true pre-discount subtotal, same reasoning as the on-screen receipt.
+    $discAmount = (float)($order['discount_amount'] ?? 0);
+    $subtotal   = (float)($order['subtotal'] ?? $order['total']) + $discAmount;
+    $tax        = (float)($order['tax_amount'] ?? 0);
 
     $r->line(padReceiptLine('Subtotal', formatMoneyAscii($subtotal)));
+    if ($discAmount > 0) {
+        $r->line(padReceiptLine('Discount', '-' . formatMoneyAscii($discAmount)));
+    }
     if ($tax > 0) {
         $r->line(padReceiptLine('Tax', formatMoneyAscii($tax)));
     }

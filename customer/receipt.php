@@ -123,15 +123,29 @@ $items = $stmt->fetchAll();
             </div>
             <?php endforeach; ?>
             <?php
-            $subtotal = (float)($order['subtotal'] ?: $order['total']);
-            $taxAmt   = (float)($order['tax_amount'] ?? 0);
+            // order.subtotal is stored AFTER discount (see pos.php's checkout action) —
+            // add discount_amount back so this can disclose the discount instead of
+            // silently showing a lower subtotal with no explanation.
+            $discAmount = (float)($order['discount_amount'] ?? 0);
+            $discType   = $order['discount_type'] ?? 'none';
+            $discValue  = (float)($order['discount_value'] ?? 0);
+            $subtotal   = (float)($order['subtotal'] ?: $order['total']) + $discAmount;
+            $taxAmt     = (float)($order['tax_amount'] ?? 0);
             $grandTotal = (float)$order['total'];
             ?>
             <div class="border-t pt-2 mt-2 space-y-0.5 text-sm">
-                <?php if ($taxAmt > 0): ?>
+                <?php if ($taxAmt > 0 || $discAmount > 0): ?>
                 <div class="flex justify-between text-gray-500">
                     <span>Subtotal</span><span><?= money($subtotal) ?></span>
                 </div>
+                <?php endif; ?>
+                <?php if ($discAmount > 0): ?>
+                <div class="flex justify-between text-green-600">
+                    <span>Discount <?= $discType === 'percent' ? "({$discValue}%)" : '(fixed)' ?></span>
+                    <span>−<?= money($discAmount) ?></span>
+                </div>
+                <?php endif; ?>
+                <?php if ($taxAmt > 0): ?>
                 <div class="flex justify-between text-gray-500">
                     <span>Tax (<?= getTaxRate() ?>%)</span><span><?= money($taxAmt) ?></span>
                 </div>

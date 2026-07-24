@@ -432,7 +432,13 @@ $pendingOrders = $pendingOrders->fetchAll();
     $rStmt2->execute([$receiptId]);
     $rOrder = $rStmt2->fetch();
     $rTax = (float)($rOrder['tax_amount'] ?? 0);
-    $rSubtotal = (float)($rOrder['subtotal'] ?? $rOrder['total']);
+    // bar_orders.subtotal is stored AFTER discount (see pos.php's checkout action) —
+    // reconstruct the pre-discount item total so the receipt can disclose the discount
+    // instead of just silently showing a lower subtotal with no explanation.
+    $rDiscAmount = (float)($rOrder['discount_amount'] ?? 0);
+    $rDiscType   = $rOrder['discount_type'] ?? 'none';
+    $rDiscValue  = (float)($rOrder['discount_value'] ?? 0);
+    $rSubtotal = (float)($rOrder['subtotal'] ?? $rOrder['total']) + $rDiscAmount;
     $rEscPosPayload = base64_encode(buildReceiptEscPos(
         $rOrder, $rItems,
         getSetting('bar_name', 'The Bar'),
@@ -459,6 +465,12 @@ $pendingOrders = $pendingOrders->fetchAll();
             <hr class="my-2 border-t border-dashed border-gray-400">
             <div class="text-sm space-y-0.5">
                 <div class="flex justify-between"><span>Subtotal</span><span><?= money($rSubtotal) ?></span></div>
+                <?php if ($rDiscAmount > 0): ?>
+                <div class="flex justify-between text-green-600">
+                    <span>Discount <?= $rDiscType === 'percent' ? "({$rDiscValue}%)" : '(fixed)' ?></span>
+                    <span>−<?= money($rDiscAmount) ?></span>
+                </div>
+                <?php endif; ?>
                 <?php if ($rTax > 0): ?>
                 <div class="flex justify-between text-gray-500"><span>Tax (<?= getTaxRate() ?>%)</span><span><?= money($rTax) ?></span></div>
                 <?php endif; ?>
