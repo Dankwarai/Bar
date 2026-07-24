@@ -1,4 +1,13 @@
 <?php
+// PHP defaults to UTC when no timezone is configured, but MySQL's NOW()/
+// CURRENT_TIMESTAMP follow the server's system timezone. On this server
+// that's West Africa Time (UTC+1) -- a mismatch that silently threw off
+// every place the app compares PHP's time()/date() against a MySQL
+// created_at value (most visibly: kitchen.php's order wait-time display
+// showing negative minutes, which breaks its urgency color-coding).
+// Nigeria doesn't observe DST, so this is a fixed, safe offset.
+date_default_timezone_set('Africa/Lagos');
+
 // Connection is lazy — only made on the first actual db() call, not merely
 // when this file is required. Lets pure-logic code (and unit tests) pull in
 // functions.php without forcing a live database connection to exist.
