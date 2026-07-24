@@ -106,6 +106,10 @@ if ($action === 'restock') {
     $nameStmt->execute([$id]);
     $itemName = $nameStmt->fetchColumn() ?: "id:{$id}";
     auditLog('stock_restock', $itemName, "+{$qty}" . ($note ? " — {$note}" : ''));
+    // Restocking can bring a linked menu item back above zero — reactivate it if so.
+    // (adjust_stock already does this; restock is the more common real-world path
+    // for replenishing stock and was missing it.)
+    syncMenuItemAvailability($id);
     header('Location: /bar/pages/inventory.php');
     exit;
 }

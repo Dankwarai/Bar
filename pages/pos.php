@@ -745,13 +745,17 @@ $pendingOrders = $pendingOrders->fetchAll();
                         <i class="ri-bill-line"></i> Checkout <?= money($grandTotal) ?>
                     </button>
                 </form>
+            </div>
+            <?php endif; ?>
 
-                <?php if (in_array($_SESSION['role'] ?? '', ['admin', 'manager'])): ?>
+            <?php if (in_array($_SESSION['role'] ?? '', ['admin', 'manager'])): ?>
+            <!-- Always available, even with an empty cart — otherwise a table with an
+                 accidentally-created empty order has no way to be freed from this page. -->
+            <div class="<?= !empty($orderItems) ? '' : 'border-t pt-3 mt-3' ?>">
                 <button onclick="document.getElementById('voidModal').classList.remove('hidden')"
                     class="btn btn-ghost btn-sm w-full text-red-500 hover:bg-red-50">
                     <i class="ri-forbid-line"></i> Void Order
                 </button>
-                <?php endif; ?>
             </div>
             <?php endif; ?>
         </div>
