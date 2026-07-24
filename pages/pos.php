@@ -844,7 +844,11 @@ function filterMenu() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    filterCategory('all', document.querySelector('.category-filter-btn'));
+    // .category-filter-btn only exists on the active-order view (menu + cart) —
+    // this script tag is also present on the table-select and receipt views,
+    // where there's nothing to filter.
+    var firstCategoryBtn = document.querySelector('.category-filter-btn');
+    if (firstCategoryBtn) filterCategory('all', firstCategoryBtn);
     updateSplitRemaining();
 });
 
