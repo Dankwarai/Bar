@@ -12,8 +12,14 @@ $msgType = 'success';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') verifyCsrf();
 
 // ── Secure image upload helper ────────────────────────────────────────────────
-function saveMenuImage(array $file, int $itemId): ?string {
-    if (empty($file['name']) || $file['error'] !== UPLOAD_ERR_OK) return null;
+// $error is filled in on failure so callers can tell an invalid file apart
+// from e.g. a filesystem permission problem — reporting both as "invalid
+// file type" sends whoever's troubleshooting it down the wrong path entirely.
+function saveMenuImage(array $file, int $itemId, ?string &$error = null): ?string {
+    if (empty($file['name']) || $file['error'] !== UPLOAD_ERR_OK) {
+        $error = 'No file received (upload error code ' . ($file['error'] ?? 'unknown') . ').';
+        return null;
+    }
 
     $allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
     $allowedExts  = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
@@ -23,17 +29,26 @@ function saveMenuImage(array $file, int $itemId): ?string {
     $mime  = finfo_file($finfo, $file['tmp_name']);
     finfo_close($finfo);
 
-    if (!in_array($mime, $allowedMimes, true)) return null;
+    if (!in_array($mime, $allowedMimes, true)) {
+        $error = 'invalid type — only JPG, PNG, GIF, WEBP allowed.';
+        return null;
+    }
 
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-    if (!in_array($ext, $allowedExts, true)) return null;
+    if (!in_array($ext, $allowedExts, true)) {
+        $error = 'invalid file extension — only JPG, PNG, GIF, WEBP allowed.';
+        return null;
+    }
 
     $uploadDir = __DIR__ . '/../public/uploads/';
     if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
 
     // Rename to prevent directory traversal / overwrite attacks
     $filename = 'item_' . $itemId . '_' . time() . '.' . $ext;
-    if (!move_uploaded_file($file['tmp_name'], $uploadDir . $filename)) return null;
+    if (!move_uploaded_file($file['tmp_name'], $uploadDir . $filename)) {
+        $error = 'the server could not save the file — check that public/uploads/ is writable by the web server user.';
+        return null;
+    }
 
     return $filename;
 }
@@ -61,11 +76,11 @@ if ($action === 'add_item') {
     $itemId = db()->lastInsertId();
 
     if (!empty($_FILES['image']['name'])) {
-        $filename = saveMenuImage($_FILES['image'], $itemId);
+        $filename = saveMenuImage($_FILES['image'], $itemId, $uploadError);
         if ($filename) {
             db()->prepare("UPDATE bar_menu_items SET image = ? WHERE id = ?")->execute([$filename, $itemId]);
         } else {
-            $msg = 'Item added, but image was rejected (invalid type). Only JPG, PNG, GIF, WEBP allowed.';
+            $msg = 'Item added, but image was not saved: ' . $uploadError;
             $msgType = 'warn';
         }
     }
@@ -79,11 +94,11 @@ if ($action === 'edit_item' && $_POST['id']) {
     $stmt->execute([(int)$_POST['category_id'], $_POST['name'], $_POST['description'] ?? '', str_replace(',', '', $_POST['price']), $id]);
 
     if (!empty($_FILES['image']['name'])) {
-        $filename = saveMenuImage($_FILES['image'], $id);
+        $filename = saveMenuImage($_FILES['image'], $id, $uploadError);
         if ($filename) {
             db()->prepare("UPDATE bar_menu_items SET image = ? WHERE id = ?")->execute([$filename, $id]);
         } else {
-            $msg = 'Item updated, but new image was rejected (invalid type).';
+            $msg = 'Item updated, but new image was not saved: ' . $uploadError;
             $msgType = 'warn';
         }
     }
