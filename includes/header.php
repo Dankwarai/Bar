@@ -10,11 +10,17 @@ $lowStockCount = (int)db()->query("SELECT COUNT(*) FROM bar_inventory WHERE quan
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= e(getSetting('bar_name', 'The Bar')) ?> — Management</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.5.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="/bar/public/vendor/remixicon/remixicon.css" rel="stylesheet">
+    <link href="/bar/public/vendor/inter/inter.css" rel="stylesheet">
     <link rel="stylesheet" href="/bar/public/css/style.css">
+    <!-- Tailwind loads last so its utility classes (e.g. .hidden) win over
+         style.css's component classes (e.g. .modal-overlay's display:flex)
+         at equal specificity — matches how the old Play CDN behaved, since
+         it injected its generated styles after everything else on the page. -->
+    <link rel="stylesheet" href="/bar/public/css/tailwind.build.css">
+    <link rel="stylesheet" href="/bar/public/vendor/sweetalert2/sweetalert2.min.css">
+    <script src="/bar/public/vendor/sweetalert2/sweetalert2.all.min.js"></script>
+    <script src="/bar/public/js/swal-helpers.js"></script>
 </head>
 <body class="min-h-screen">
     <div class="flex h-screen overflow-hidden">

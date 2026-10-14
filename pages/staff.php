@@ -149,7 +149,7 @@ unset($_SESSION['flash_reset_link']);
                                     class="btn btn-ghost btn-sm text-blue-600">
                                     <i class="ri-edit-line"></i> Edit
                                 </button>
-                                <form method="POST" class="inline" onsubmit="return confirm('Generate a password reset link for <?= e(addslashes($s['name'])) ?>?\nAny previous unused link for them will stop working.')">
+                                <form method="POST" class="inline" onsubmit="return confirmFormSubmit(event, 'Generate a password reset link for <?= e(addslashes($s['name'])) ?>?', 'Any previous unused link for them will stop working.')">
                                     <input type="hidden" name="action" value="generate_reset_link">
                                     <input type="hidden" name="id" value="<?= $s['id'] ?>">
                                     <?= csrfField() ?>

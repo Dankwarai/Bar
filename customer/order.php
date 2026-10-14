@@ -11,6 +11,11 @@ if ($action === 'submit_order') {
     $token = $_POST['token'] ?? '';
     $session = $_POST['session'] ?? '';
     $itemsJson = $_POST['items'] ?? '[]';
+    $allowedPaymentMethods = ['cash', 'pos', 'card', 'online'];
+    $paymentMethod = $_POST['payment_method'] ?? 'cash';
+    if (!in_array($paymentMethod, $allowedPaymentMethods, true)) {
+        $paymentMethod = 'cash';
+    }
 
     $stmt = db()->prepare("SELECT id FROM `bar_tables` WHERE qr_token = ? AND active = 1");
     $stmt->execute([$token]);
@@ -57,10 +62,18 @@ if ($action === 'submit_order') {
         $total += $menuPrices[$itemId] * $qty;
     }
 
+    ensureOrderPaymentMethodColumn();
+
     db()->beginTransaction();
     try {
-        $stmt = db()->prepare("INSERT INTO bar_orders (table_id, source, customer_session, status, total) VALUES (?, 'customer', ?, 'pending', ?)");
-        $stmt->execute([$table['id'], $session, $total]);
+        $lockStmt = db()->prepare("SELECT id FROM `bar_tables` WHERE id = ? AND active = 1 FOR UPDATE");
+        $lockStmt->execute([$table['id']]);
+        if (!$lockStmt->fetch()) {
+            throw new RuntimeException('Table is no longer available.');
+        }
+
+        $stmt = db()->prepare("INSERT INTO bar_orders (table_id, source, customer_session, payment_method, status, total) VALUES (?, 'customer', ?, ?, 'pending', ?)");
+        $stmt->execute([$table['id'], $session, $paymentMethod, $total]);
         $orderId = db()->lastInsertId();
 
         $stmt = db()->prepare("INSERT INTO bar_order_items (order_id, menu_item_id, quantity, unit_price) VALUES (?, ?, ?, ?)");
@@ -89,6 +102,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'status') {
     exit;
 }
 
+ensureOrderPaymentMethodColumn();
 $order = fetchOwnedOrder($orderId, $token);
 
 if (!$order) {
@@ -99,6 +113,9 @@ if (!$order) {
 $stmt = db()->prepare("SELECT oi.*, mi.name FROM bar_order_items oi JOIN bar_menu_items mi ON mi.id = oi.menu_item_id WHERE oi.order_id = ?");
 $stmt->execute([$orderId]);
 $items = $stmt->fetchAll();
+$paymentMethod = $order['payment_method'] ?? 'cash';
+$paymentLabel = paymentMethodLabel($paymentMethod);
+$autoOpenPayment = isset($_GET['pay']) && $paymentMethod === 'online' && !(int)$order['paid'];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -106,13 +123,12 @@ $items = $stmt->fetchAll();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Order #<?= $orderId ?> — <?= e(getSetting('bar_name', 'The Bar')) ?></title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.5.0/fonts/remixicon.css" rel="stylesheet">
     <link rel="stylesheet" href="/bar/public/css/style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="/bar/public/vendor/inter/inter.css" rel="stylesheet">
+    <link rel="stylesheet" href="/bar/public/css/tailwind.build.css">
     <script src="https://js.paystack.co/v1/inline.js"></script>
     <style>
-        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        body { font-family: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -133,18 +149,25 @@ $items = $stmt->fetchAll();
             <div class="border-t pt-2 mt-2 flex justify-between font-bold text-lg">
                 <span>Total</span><span><?= money($order['total']) ?></span>
             </div>
+            <div class="border-t pt-2 mt-2 flex justify-between text-sm text-gray-500">
+                <span>Payment</span><span><?= e($paymentLabel) ?></span>
+            </div>
         </div>
 
-        <?php if (!$order['paid']): ?>
-        <p class="text-sm text-gray-500 mb-3">Pay now with card, or pay at the bar.</p>
+        <?php if (!$order['paid'] && $paymentMethod === 'online'): ?>
+        <p class="text-sm text-gray-500 mb-3">Complete online payment to confirm your order payment.</p>
         <div class="text-left mb-3">
             <label class="text-xs text-gray-500 block mb-1">Email for receipt (optional)</label>
             <input type="email" id="payerEmail" placeholder="you@example.com" class="form-input text-sm">
         </div>
         <button onclick="payWithPaystack(this)" class="btn btn-accent w-full py-3 rounded-full shadow-md text-base">
-            <i class="ri-bank-card-line"></i> Pay Now (<?= money($order['total']) ?>)
+            <svg viewBox="0 0 24 24" class="w-4 h-4 inline" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg> Pay Online (<?= money($order['total']) ?>)
         </button>
         <p class="text-xs text-gray-400 mt-2">Powered by Paystack</p>
+        <?php elseif (!$order['paid']): ?>
+        <div class="bg-amber-50 text-amber-700 p-4 rounded-lg text-sm font-medium">
+            Payment selected: <?= e($paymentLabel) ?>. Staff will collect and confirm payment.
+        </div>
         <?php else:
         $pStmt = db()->prepare("SELECT method FROM bar_payments WHERE order_id = ? ORDER BY id DESC LIMIT 1");
         $pStmt->execute([$orderId]);
@@ -159,11 +182,21 @@ $items = $stmt->fetchAll();
         <div class="text-5xl mb-4">🍳</div>
         <h1 class="text-xl font-bold">Preparing Your Order</h1>
         <p class="text-gray-500">We're working on it!</p>
+        <?php if ($order['paid']): ?>
+        <div class="bg-green-50 text-green-700 px-4 py-2 rounded-lg text-sm font-bold mt-3 inline-block">
+            ✓ Paid
+        </div>
+        <?php endif; ?>
 
         <?php elseif ($order['status'] === 'ready'): ?>
         <div class="text-5xl mb-4">✅</div>
         <h1 class="text-xl font-bold">Order Ready!</h1>
         <p class="text-gray-500">Your items are being brought to you.</p>
+        <?php if ($order['paid']): ?>
+        <div class="bg-green-50 text-green-700 px-4 py-2 rounded-lg text-sm font-bold mt-3 inline-block">
+            ✓ Paid
+        </div>
+        <?php endif; ?>
 
         <?php elseif ($order['status'] === 'served' || $order['status'] === 'closed'): ?>
         <div class="text-5xl mb-4">🍹</div>
@@ -189,14 +222,14 @@ $items = $stmt->fetchAll();
         </div>
         <?php endif; ?>
 
-        <a href="/bar/customer/menu.php?token=<?= e($token) ?>" class="btn-outline inline-block mt-4">Back to Menu</a>
+        <a href="/bar/customer/menu.php?token=<?= e($token) ?>" class="btn-outline inline-block mt-4"><svg viewBox="0 0 24 24" class="w-4 h-4 inline" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> Back to Menu</a>
     </div>
 
     <script>
     // Used only when the customer leaves the email field blank — keeps each
     // transaction's email unique per order instead of one fake address reused
     // for every payment, without requiring the customer to enter anything.
-    var FALLBACK_PAYER_EMAIL = '<?= e('order-' . $orderId . '@noemail.local') ?>';
+    var FALLBACK_PAYER_EMAIL = 'customer@example.com';
 
     function payWithPaystack(btn) {
         btn.disabled = true;
@@ -204,20 +237,29 @@ $items = $stmt->fetchAll();
         var emailInput = document.getElementById('payerEmail');
         var payerEmail = (emailInput && emailInput.value.trim()) || FALLBACK_PAYER_EMAIL;
         var handler = PaystackPop.setup({
-            key: '<?= getenv('PAYSTACK_PUBLIC_KEY') ?: 'pk_test_xxxxxxxx' ?>',
+            key: '<?= getenv('PAYSTACK_PUBLIC_KEY') ?: 'pk_test_8400015011a29298d0d6b6b55a30f41b014bc8b3' ?>',
             email: payerEmail,
             amount: <?= round($order['total'] * 100) ?>,
             currency: 'NGN',
             ref: 'BAR-' + Date.now(),
+            metadata: { order_id: <?= (int)$orderId ?> },
             callback: function(response) {
                 window.location.href = '/bar/customer/receipt.php?ref=' + response.reference + '&order_id=<?= $orderId ?>&token=<?= urlencode($token) ?>';
             },
             onClose: function() {
                 btn.disabled = false;
-                btn.innerHTML = '<i class="ri-bank-card-line"></i> Pay Now (<?= money($order['total']) ?>)';
+                btn.innerHTML = '<svg viewBox="0 0 24 24" class="w-4 h-4 inline" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg> Pay Now (<?= money($order['total']) ?>)';
             }
         });
         handler.openIframe();
+    }
+
+    var AUTO_OPEN_PAYMENT = <?= $autoOpenPayment ? 'true' : 'false' ?>;
+    if (AUTO_OPEN_PAYMENT) {
+        setTimeout(function() {
+            var payBtn = document.querySelector('button[onclick^="payWithPaystack"]');
+            if (payBtn) payWithPaystack(payBtn);
+        }, 400);
     }
 
     // ── Live order status polling ─────────────────────────────────────────────
@@ -271,8 +313,16 @@ $items = $stmt->fetchAll();
                 .catch(function() { /* silent fail */ });
         }
 
-        // Poll every 5 seconds
-        pollTimer = setInterval(poll, 5000);
+        // Poll every 15 seconds on mobile-friendly interval
+        // Pause when tab is hidden to save battery
+        pollTimer = setInterval(poll, 15000);
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                clearInterval(pollTimer);
+            } else {
+                pollTimer = setInterval(poll, 15000);
+            }
+        });
     })();
     </script>
 </body>

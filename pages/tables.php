@@ -123,7 +123,7 @@ foreach ($tables as $t) {
                     <input type="hidden" name="action" value="regenerate_token">
                     <?= csrfField() ?>
                     <input type="hidden" name="id" value="<?= $t['id'] ?>">
-                    <button type="submit" onclick="return confirmRegen(<?= $t['number'] ?>)" class="btn btn-ghost btn-sm text-amber-600 hover:text-amber-800">
+                    <button type="submit" onclick="return confirmFormSubmit(event, 'Regenerate QR token for Table <?= $t['number'] ?>?', 'Existing QR codes for this table will stop working.')" class="btn btn-ghost btn-sm text-amber-600 hover:text-amber-800">
                         <i class="ri-refresh-line"></i> Regenerate
                     </button>
                 </form>
@@ -228,7 +228,7 @@ qrInstances[<?= $t['id'] ?>] = new QRCode(document.getElementById('qr_<?= $t['id
 function downloadQR(tableId, tableNumber) {
     var el = document.getElementById('qr_' + tableId);
     var canvas = el.querySelector('canvas');
-    if (!canvas) return alert('QR not rendered yet.');
+    if (!canvas) return swalAlert('QR not rendered yet.', 'warning');
     var link = document.createElement('a');
     link.download = 'Table_' + tableNumber + '_QR.png';
     link.href = canvas.toDataURL('image/png');
@@ -256,10 +256,6 @@ function copyLink(url, btn) {
     }).catch(function() {
         prompt('Copy this link:', url);
     });
-}
-
-function confirmRegen(n) {
-    return confirm('Regenerate QR token for Table ' + n + '?\nExisting QR codes for this table will stop working.');
 }
 
 function openEditModal(id, number, capacity) {

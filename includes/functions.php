@@ -189,6 +189,32 @@ function syncMenuItemAvailability(int $inventoryId): void {
     }
 }
 
+// ── Order payment method schema guard ─────────────────────────────────────────
+function ensureOrderPaymentMethodColumn(): void {
+    static $done = false;
+    if ($done) return;
+    try {
+        $column = db()->query("SHOW COLUMNS FROM bar_orders LIKE 'payment_method'")->fetch();
+        if (!$column) {
+            db()->exec("ALTER TABLE bar_orders ADD COLUMN payment_method ENUM('cash', 'pos', 'card', 'online') NOT NULL DEFAULT 'cash' AFTER customer_session");
+        }
+    } catch (Throwable $e) {
+        error_log('ensureOrderPaymentMethodColumn failed: ' . $e->getMessage());
+    }
+    $done = true;
+}
+
+function paymentMethodLabel(?string $method): string {
+    $labels = [
+        'cash' => 'Cash',
+        'pos' => 'POS',
+        'card' => 'Card',
+        'online' => 'Online',
+    ];
+    $key = $method ?: 'cash';
+    return isset($labels[$key]) ? $labels[$key] : 'Cash';
+}
+
 // ── Quick stat helpers (used by dashboard) ────────────────────────────────────
 function activeOrdersCount(): int {
     $stmt = db()->prepare("SELECT COUNT(*) FROM bar_orders WHERE status NOT IN ('closed')");

@@ -46,14 +46,22 @@ function padReceiptLine(string $label, string $value, int $width = 32): string
  * Build the ESC/POS byte payload for an order receipt — mirrors the layout of
  * the existing browser-print receipt (bar name, items, totals, footer).
  */
-function buildReceiptEscPos(array $order, array $items, string $barName, string $barAddress, string $footer): string
+function buildReceiptEscPos(array $order, array $items, array $payments, string $barName, string $barAddress, string $footer): string
 {
+    $orderDate = $order['closed_at'] ?? $order['created_at'];
+
     $r = new EscPosReceipt();
     $r->init()->align('center')->bold(true)->doubleHeight(true)->line($barName)->doubleHeight(false)->bold(false);
     if ($barAddress !== '') $r->line($barAddress);
-    $r->line(date('Y-m-d H:i:s'))
+    $r->line(date('Y-m-d H:i:s', strtotime($orderDate)))
       ->align('left')
       ->line(str_repeat('-', 32));
+
+    $r->line(padReceiptLine('Order #', (string)$order['id']));
+    if (!empty($order['table_number'])) $r->line(padReceiptLine('Table', (string)$order['table_number']));
+    $r->line(padReceiptLine('Source', ucfirst($order['source'])));
+    if (!empty($order['staff_name'])) $r->line(padReceiptLine('Served by', $order['staff_name']));
+    $r->line(str_repeat('-', 32));
 
     foreach ($items as $item) {
         $label = $item['name'] . ' x' . $item['quantity'];
@@ -76,6 +84,15 @@ function buildReceiptEscPos(array $order, array $items, string $barName, string 
         $r->line(padReceiptLine('Tax', formatMoneyAscii($tax)));
     }
     $r->bold(true)->line(padReceiptLine('Total', formatMoneyAscii($order['total'])))->bold(false);
+
+    if ($payments) {
+        $r->line(str_repeat('-', 32));
+        foreach ($payments as $p) {
+            $label = 'Paid via ' . ucfirst($p['method']);
+            $r->line(padReceiptLine($label, formatMoneyAscii($p['amount'])));
+            if (!empty($p['reference'])) $r->line('  Ref: ' . $p['reference']);
+        }
+    }
 
     if ($footer !== '') {
         $r->feed(1)->align('center')->line($footer);

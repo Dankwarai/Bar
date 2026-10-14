@@ -123,7 +123,7 @@ foreach ($tables as $t) { if ($t['active']) $activeCount++; }
                 <button onclick="openEditModal(<?= $t['id'] ?>, <?= $t['number'] ?>, <?= $t['capacity'] ?>)" class="btn btn-sm btn-ghost text-xs text-blue-600">
                     <i class="ri-pencil-line"></i> Edit
                 </button>
-                <form method="POST" class="inline" onsubmit="return confirm('Regenerate QR for Table <?= $t['number'] ?>?')">
+                <form method="POST" class="inline" onsubmit="return confirmFormSubmit(event, 'Regenerate QR for Table <?= $t['number'] ?>?')">
                     <?= csrfField() ?>
                     <input type="hidden" name="action" value="regenerate_token">
                     <input type="hidden" name="id" value="<?= $t['id'] ?>">
@@ -237,7 +237,7 @@ new QRCode(document.getElementById('print_qr_<?= $t['id'] ?>'), {
 function downloadQR(tableId, tableNumber) {
     var el = document.getElementById('qrcode_' + tableId);
     var canvas = el.querySelector('canvas');
-    if (!canvas) return alert('QR not rendered yet.');
+    if (!canvas) return swalAlert('QR not rendered yet.', 'warning');
     var link = document.createElement('a');
     link.download = 'Table_' + tableNumber + '_QR.png';
     link.href = canvas.toDataURL('image/png');

@@ -428,9 +428,18 @@ $pendingOrders = $pendingOrders->fetchAll();
     $rStmt = db()->prepare("SELECT oi.*, mi.name FROM bar_order_items oi JOIN bar_menu_items mi ON mi.id = oi.menu_item_id WHERE oi.order_id = ?");
     $rStmt->execute([$receiptId]);
     $rItems = $rStmt->fetchAll();
-    $rStmt2 = db()->prepare("SELECT * FROM bar_orders WHERE id = ?");
+    $rStmt2 = db()->prepare("
+        SELECT o.*, t.number AS table_number, u.name AS staff_name
+        FROM bar_orders o
+        LEFT JOIN `bar_tables` t ON t.id = o.table_id
+        LEFT JOIN bar_users    u ON u.id = o.user_id
+        WHERE o.id = ?
+    ");
     $rStmt2->execute([$receiptId]);
     $rOrder = $rStmt2->fetch();
+    $rPayStmt = db()->prepare("SELECT method, amount, reference, created_at FROM bar_payments WHERE order_id = ? ORDER BY id");
+    $rPayStmt->execute([$receiptId]);
+    $rPayments = $rPayStmt->fetchAll();
     $rTax = (float)($rOrder['tax_amount'] ?? 0);
     // bar_orders.subtotal is stored AFTER discount (see pos.php's checkout action) —
     // reconstruct the pre-discount item total so the receipt can disclose the discount
@@ -439,8 +448,9 @@ $pendingOrders = $pendingOrders->fetchAll();
     $rDiscType   = $rOrder['discount_type'] ?? 'none';
     $rDiscValue  = (float)($rOrder['discount_value'] ?? 0);
     $rSubtotal = (float)($rOrder['subtotal'] ?? $rOrder['total']) + $rDiscAmount;
+    $rOrderDate = $rOrder['closed_at'] ?? $rOrder['created_at'];
     $rEscPosPayload = base64_encode(buildReceiptEscPos(
-        $rOrder, $rItems,
+        $rOrder, $rItems, $rPayments,
         getSetting('bar_name', 'The Bar'),
         getSetting('bar_address', ''),
         getSetting('receipt_footer', 'Thank you!')
@@ -451,9 +461,18 @@ $pendingOrders = $pendingOrders->fetchAll();
             <div class="text-center">
                 <h2 class="text-lg font-bold"><?= e(getSetting('bar_name', 'The Bar')) ?></h2>
                 <p class="text-[10px] text-gray-500"><?= e(getSetting('bar_address', '')) ?></p>
-                <p class="text-[10px] text-gray-500"><?= date('Y-m-d H:i:s') ?></p>
+                <p class="text-[10px] text-gray-500"><?= date('Y-m-d H:i:s', strtotime($rOrderDate)) ?></p>
                 <hr class="my-2 border-t border-dashed border-gray-400">
             </div>
+            <div class="text-xs space-y-0.5 mb-2">
+                <div class="flex justify-between"><span>Order #</span><span><?= e($rOrder['id']) ?></span></div>
+                <div class="flex justify-between"><span>Table</span><span><?= e($rOrder['table_number'] ?? '—') ?></span></div>
+                <div class="flex justify-between"><span>Source</span><span><?= e(ucfirst($rOrder['source'])) ?></span></div>
+                <?php if ($rOrder['staff_name']): ?>
+                <div class="flex justify-between"><span>Served by</span><span><?= e($rOrder['staff_name']) ?></span></div>
+                <?php endif; ?>
+            </div>
+            <hr class="my-2 border-t border-dashed border-gray-400">
             <table class="receipt-table">
                 <?php foreach ($rItems as $ri): ?>
                 <tr>
@@ -478,6 +497,17 @@ $pendingOrders = $pendingOrders->fetchAll();
                     <span>Total</span><span><?= money($rOrder['total']) ?></span>
                 </div>
             </div>
+            <?php if ($rPayments): ?>
+            <hr class="my-2 border-t border-dashed border-gray-400">
+            <div class="text-xs space-y-0.5">
+                <?php foreach ($rPayments as $rp): ?>
+                <div class="flex justify-between text-gray-500">
+                    <span>Paid via <?= e(ucfirst($rp['method'])) ?><?= $rp['reference'] ? ' (' . e($rp['reference']) . ')' : '' ?></span>
+                    <span><?= money($rp['amount']) ?></span>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
             <p class="text-center text-[10px] mt-3 text-gray-500"><?= e(getSetting('receipt_footer', 'Thank you!')) ?></p>
         </div>
         <div class="flex gap-2 mt-4 flex-wrap">

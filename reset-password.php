@@ -39,13 +39,12 @@ if ($user && $_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reset Password — <?= e(getSetting('bar_name', 'The Bar')) ?></title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.5.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="/bar/public/vendor/remixicon/remixicon.css" rel="stylesheet">
+    <link href="/bar/public/vendor/inter/inter.css" rel="stylesheet">
     <link rel="stylesheet" href="/bar/public/css/style.css">
+    <link rel="stylesheet" href="/bar/public/css/tailwind.build.css">
     <style>
-        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        body { font-family: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
         .login-bg { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); }
         .login-card { backdrop-filter: blur(20px); background: rgba(255,255,255,0.95); }
     </style>

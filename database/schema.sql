@@ -65,10 +65,12 @@ CREATE TABLE IF NOT EXISTS bar_orders (
     status ENUM('pending','accepted','ready','served','closed') NOT NULL DEFAULT 'pending',
     source ENUM('staff','customer') NOT NULL DEFAULT 'staff',
     customer_session VARCHAR(64) DEFAULT NULL,
+    payment_method ENUM('cash','pos','card','online') NOT NULL DEFAULT 'cash',
     total DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     paid TINYINT(1) NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     closed_at TIMESTAMP NULL DEFAULT NULL,
+    served_at TIMESTAMP NULL DEFAULT NULL,
     FOREIGN KEY (table_id) REFERENCES bar_tables(id),
     FOREIGN KEY (user_id) REFERENCES bar_users(id)
 ) ENGINE=InnoDB;
@@ -223,6 +225,10 @@ ALTER TABLE bar_orders
     ADD COLUMN IF NOT EXISTS voided      TINYINT(1)   NOT NULL DEFAULT 0 AFTER paid,
     ADD COLUMN IF NOT EXISTS void_reason VARCHAR(255) DEFAULT NULL        AFTER voided,
     ADD COLUMN IF NOT EXISTS voided_by   INT UNSIGNED DEFAULT NULL        AFTER void_reason;
+
+-- Customer-selected payment method for QR orders
+ALTER TABLE bar_orders
+    ADD COLUMN payment_method ENUM('cash','pos','card','online') NOT NULL DEFAULT 'cash' AFTER customer_session;
 
 -- Item-level notes/special requests
 ALTER TABLE bar_order_items

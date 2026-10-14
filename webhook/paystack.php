@@ -17,7 +17,7 @@ if (!$event || !isset($event['event'])) {
 }
 
 // Verify signature
-$secret = getenv('PAYSTACK_SECRET_KEY') ?: 'sk_test_xxxxxxxx';
+$secret = getenv('PAYSTACK_SECRET_KEY') ?: 'sk_test_0745d2330a55b1c1f626aba2487e7f3dc08ff6dc';
 $signature = $_SERVER['HTTP_X_PAYSTACK_SIGNATURE'] ?? '';
 if ($signature !== hash_hmac('sha512', $input, $secret)) {
     http_response_code(401);

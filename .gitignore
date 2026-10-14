@@ -13,6 +13,9 @@ public/uploads/*
 /vendor/
 composer.lock
 
+# JS build tooling (Tailwind CLI) — compiled output in public/css is committed
+/node_modules/
+
 # PHPUnit runtime artifacts
 .phpunit.result.cache
 /.phpunit.cache/

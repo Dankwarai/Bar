@@ -11,15 +11,12 @@ if (!$ref || !$orderId) {
     die('Invalid request.');
 }
 
-// Ownership check — the table QR token must actually own this order, otherwise
-// anyone could view another table's payment status by guessing an order id.
 $order = fetchOwnedOrder($orderId, $token);
 if (!$order) {
     http_response_code(404);
     die('Order not found.');
 }
 
-// ── Idempotency: check if this reference was already processed ────────────────
 $dupStmt = db()->prepare("SELECT id FROM bar_payments WHERE reference = ? LIMIT 1");
 $dupStmt->execute([$ref]);
 $alreadyPaid = (bool)$dupStmt->fetchColumn();
@@ -27,8 +24,7 @@ $alreadyPaid = (bool)$dupStmt->fetchColumn();
 $success = false;
 
 if (!$alreadyPaid) {
-    // Verify with Paystack only if not already recorded
-    $secret = getenv('PAYSTACK_SECRET_KEY') ?: 'sk_test_xxxxxxxx';
+    $secret = getenv('PAYSTACK_SECRET_KEY') ?: 'sk_test_0745d2330a55b1c1f626aba2487e7f3dc08ff6dc';
     $ch = curl_init();
     curl_setopt_array($ch, [
         CURLOPT_URL            => "https://api.paystack.co/transaction/verify/" . urlencode($ref),
@@ -47,20 +43,14 @@ if (!$alreadyPaid) {
 
         db()->beginTransaction();
         try {
-            // INSERT IGNORE prevents a race-condition double-insert
             db()->prepare("INSERT IGNORE INTO bar_payments (order_id, amount, method, reference) VALUES (?, ?, 'online', ?)")
                 ->execute([$orderId, $amount, $ref]);
 
-            db()->prepare("UPDATE bar_orders SET paid = 1, status = 'closed', closed_at = NOW() WHERE id = ? AND paid = 0")
+            db()->prepare("UPDATE bar_orders SET paid = 1 WHERE id = ? AND paid = 0")
                 ->execute([$orderId]);
 
-            $ord = db()->prepare("SELECT table_id FROM bar_orders WHERE id = ?");
-            $ord->execute([$orderId]);
-            $orderRow = $ord->fetch();
-            if ($orderRow) {
-                db()->prepare("UPDATE `bar_tables` SET status = 'free' WHERE id = ?")
-                    ->execute([$orderRow['table_id']]);
-            }
+            db()->prepare("UPDATE bar_orders SET status = 'accepted' WHERE id = ? AND status = 'pending'")
+                ->execute([$orderId]);
 
             db()->commit();
         } catch (Exception $e) {
@@ -68,11 +58,9 @@ if (!$alreadyPaid) {
         }
     }
 } else {
-    // Reference already recorded — treat as success (idempotent re-load)
     $success = true;
 }
 
-// ── Re-fetch order for display (payment fields above may have just changed it) ─
 $order = fetchOwnedOrder($orderId, $token);
 
 $stmt = db()->prepare("
@@ -83,83 +71,142 @@ $stmt = db()->prepare("
 ");
 $stmt->execute([$orderId]);
 $items = $stmt->fetchAll();
+
+$discAmount = (float)($order['discount_amount'] ?? 0);
+$discType   = $order['discount_type'] ?? 'none';
+$discValue  = (float)($order['discount_value'] ?? 0);
+$subtotal   = (float)($order['subtotal'] ?: $order['total']) + $discAmount;
+$taxAmt     = (float)($order['tax_amount'] ?? 0);
+$grandTotal = (float)$order['total'];
+$barName    = getSetting('bar_name', 'The Bar');
+$now        = date('M j, Y g:i A');
+
+if (!$success) {
+    header('Location: /bar/customer/order.php?order_id=' . $orderId . '&token=' . urlencode($token) . '&pay=1');
+    exit;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Payment — <?= e(getSetting('bar_name', 'The Bar')) ?></title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.5.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="/bar/public/css/style.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>body { font-family: 'Inter', sans-serif; }</style>
+    <title>Receipt — <?= e($barName) ?></title>
+    <link href="/bar/public/vendor/inter/inter.css" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter Variable', 'Courier New', monospace;
+            background: #fff;
+            color: #000;
+            font-size: 12px;
+            line-height: 1.5;
+            width: 80mm;
+            margin: 0 auto;
+            padding: 10px 8px;
+        }
+        .header { text-align: center; margin-bottom: 12px; }
+        .header h1 { font-size: 18px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; }
+        .header p { font-size: 11px; color: #555; }
+        .divider { border-top: 1px dashed #999; margin: 8px 0; }
+        .thick-divider { border-top: 2px solid #000; margin: 8px 0; }
+        .info-row { display: flex; justify-content: space-between; font-size: 11px; }
+        .items { width: 100%; border-collapse: collapse; }
+        .items th { text-align: left; font-size: 10px; text-transform: uppercase; color: #555; padding-bottom: 4px; }
+        .items td { padding: 2px 0; vertical-align: top; }
+        .items .qty { text-align: center; width: 30px; }
+        .items .price { text-align: right; width: 65px; white-space: nowrap; }
+        .totals { margin-top: 4px; }
+        .totals .row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
+        .totals .grand { font-weight: 800; font-size: 14px; border-top: 1px dashed #999; padding-top: 4px; margin-top: 4px; }
+        .payment-detail { text-align: center; margin: 10px 0; }
+        .payment-detail .badge { display: inline-block; background: #d1fae5; color: #065f46; font-weight: 700; font-size: 11px; padding: 3px 12px; border-radius: 20px; }
+        .footer { text-align: center; font-size: 10px; color: #888; margin-top: 10px; }
+        .actions { margin-top: 16px; text-align: center; }
+        .actions a, .actions button {
+            display: inline-block; padding: 8px 20px; margin: 4px; border-radius: 6px;
+            font-size: 13px; font-weight: 600; text-decoration: none; cursor: pointer; border: none;
+        }
+        .btn-print { background: #000; color: #fff; }
+        .btn-back { background: #f3f4f6; color: #333; }
+        .screen-only { display: block; }
+        .receipt-header-img { font-size: 10px; }
+        @media print {
+            .screen-only { display: none; }
+            @page { margin: 0; size: 80mm auto; }
+            body { padding: 0; width: 100%; }
+        }
+    </style>
 </head>
-<body class="min-h-screen bg-gray-50">
-    <div class="max-w-sm mx-auto p-4 text-center pt-8">
-        <?php if ($success): ?>
-        <div class="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
-            <i class="ri-check-line text-green-600 text-3xl"></i>
-        </div>
-        <h1 class="text-xl font-bold text-green-600">Payment Successful!</h1>
-        <p class="text-gray-500 text-sm mb-6">Ref: <?= e($ref) ?></p>
-        <?php else: ?>
-        <div class="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
-            <i class="ri-close-line text-red-600 text-3xl"></i>
-        </div>
-        <h1 class="text-xl font-bold text-red-600">Payment Failed</h1>
-        <p class="text-gray-500 text-sm mb-6">Please try again or pay at the bar.</p>
-        <?php endif; ?>
+<body>
 
-        <?php if ($order): ?>
-        <div class="card text-left">
-            <p class="text-sm text-gray-500 mb-3">Table <?= $order['table_number'] ?> — Order #<?= $orderId ?></p>
-            <?php foreach ($items as $item): ?>
-            <div class="flex justify-between py-1 text-sm">
-                <span><?= e($item['name']) ?> ×<?= $item['quantity'] ?></span>
-                <span class="font-medium"><?= money($item['quantity'] * $item['unit_price']) ?></span>
-            </div>
-            <?php endforeach; ?>
-            <?php
-            // order.subtotal is stored AFTER discount (see pos.php's checkout action) —
-            // add discount_amount back so this can disclose the discount instead of
-            // silently showing a lower subtotal with no explanation.
-            $discAmount = (float)($order['discount_amount'] ?? 0);
-            $discType   = $order['discount_type'] ?? 'none';
-            $discValue  = (float)($order['discount_value'] ?? 0);
-            $subtotal   = (float)($order['subtotal'] ?: $order['total']) + $discAmount;
-            $taxAmt     = (float)($order['tax_amount'] ?? 0);
-            $grandTotal = (float)$order['total'];
-            ?>
-            <div class="border-t pt-2 mt-2 space-y-0.5 text-sm">
-                <?php if ($taxAmt > 0 || $discAmount > 0): ?>
-                <div class="flex justify-between text-gray-500">
-                    <span>Subtotal</span><span><?= money($subtotal) ?></span>
-                </div>
-                <?php endif; ?>
-                <?php if ($discAmount > 0): ?>
-                <div class="flex justify-between text-green-600">
-                    <span>Discount <?= $discType === 'percent' ? "({$discValue}%)" : '(fixed)' ?></span>
-                    <span>−<?= money($discAmount) ?></span>
-                </div>
-                <?php endif; ?>
-                <?php if ($taxAmt > 0): ?>
-                <div class="flex justify-between text-gray-500">
-                    <span>Tax (<?= getTaxRate() ?>%)</span><span><?= money($taxAmt) ?></span>
-                </div>
-                <?php endif; ?>
-                <div class="flex justify-between font-bold text-base pt-1">
-                    <span>Total</span><span><?= money($grandTotal) ?></span>
-                </div>
-            </div>
-        </div>
-        <?php endif; ?>
-
-        <a href="/bar/customer/menu.php?token=<?= e($token) ?>" class="btn btn-outline mt-4 inline-block">
-            <i class="ri-arrow-left-line"></i> Back to Menu
-        </a>
+    <div class="screen-only actions">
+        <button class="btn-print" onclick="window.print()">🖨 Print Receipt</button>
+        <a class="btn-back" href="/bar/customer/order.php?order_id=<?= $orderId ?>&token=<?= e($token) ?>">← Back</a>
     </div>
+
+    <div class="header">
+        <h1><?= e($barName) ?></h1>
+        <p>📍 Table <?= e($order['table_number']) ?> • Order #<?= $orderId ?></p>
+        <p><?= $now ?></p>
+    </div>
+
+    <div class="thick-divider"></div>
+
+    <div class="info-row"><span>Reference</span><span><?= e($ref) ?></span></div>
+    <div class="info-row"><span>Status</span><span>Paid ✓</span></div>
+
+    <div class="thick-divider"></div>
+
+    <table class="items">
+        <thead>
+            <tr><th>Item</th><th class="qty">Qty</th><th class="price">Amount</th></tr>
+        </thead>
+        <tbody>
+            <?php foreach ($items as $item): ?>
+            <tr>
+                <td><?= e($item['name']) ?></td>
+                <td class="qty"><?= (int)$item['quantity'] ?></td>
+                <td class="price"><?= money($item['quantity'] * $item['unit_price']) ?></td>
+            </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+
+    <div class="totals">
+        <?php if ($taxAmt > 0 || $discAmount > 0): ?>
+        <div class="row"><span>Subtotal</span><span><?= money($subtotal) ?></span></div>
+        <?php endif; ?>
+        <?php if ($discAmount > 0): ?>
+        <div class="row" style="color:#16a34a;"><span>Discount <?= $discType === 'percent' ? "({$discValue}%)" : '' ?></span><span>−<?= money($discAmount) ?></span></div>
+        <?php endif; ?>
+        <?php if ($taxAmt > 0): ?>
+        <div class="row"><span>Tax (<?= getTaxRate() ?>%)</span><span><?= money($taxAmt) ?></span></div>
+        <?php endif; ?>
+        <div class="row grand"><span>Total Paid</span><span><?= money($grandTotal) ?></span></div>
+    </div>
+
+    <div class="payment-detail">
+        <span class="badge">✓ PAID — Online</span>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="footer">
+        <p>Thank you for your order!</p>
+        <p style="margin-top:4px;">Your order is being prepared.</p>
+    </div>
+
+    <div class="screen-only actions">
+        <button class="btn-print" onclick="window.print()">🖨 Print Receipt</button>
+        <a class="btn-back" href="/bar/customer/order.php?order_id=<?= $orderId ?>&token=<?= e($token) ?>">← Back to Order</a>
+    </div>
+
+    <script>
+        if (window.location.search.includes('print=1')) {
+            window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 500); });
+        }
+    </script>
 </body>
 </html>
+

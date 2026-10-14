@@ -111,7 +111,7 @@ $mappings = db()->query("
                         </td>
                         <td class="text-right">
                             <form method="POST" class="inline"
-                                  onsubmit="return confirm('Remove this mapping?')">
+                                  onsubmit="return confirmFormSubmit(event, 'Remove this mapping?')">
                                 <?= csrfField() ?>
                                 <input type="hidden" name="action" value="delete_mapping">
                                 <input type="hidden" name="id" value="<?= $m['id'] ?>">

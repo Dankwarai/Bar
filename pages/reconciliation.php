@@ -278,7 +278,7 @@ if ($closedId) {
                     <input type="text" name="notes" class="form-input" placeholder="e.g. Petty cash used for ice">
                 </div>
             </div>
-            <button type="submit" class="btn btn-danger" onclick="return confirm('Close this shift? This cannot be undone.')">
+            <button type="submit" class="btn btn-danger" onclick="return confirmFormSubmit(event, 'Close this shift?', 'This cannot be undone.')">
                 <i class="ri-flag-line"></i> Close Shift & Generate Report
             </button>
         </form>

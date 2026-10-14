@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 requireAuth();
+ensureOrderPaymentMethodColumn();
 
 // ── AJAX: refund from orders page ─────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'refund') {
@@ -85,7 +86,7 @@ $offset  = ($page - 1) * $perPage;
 // ── Single JOIN query — no N+1 ─────────────────────────────────────────────
 $countSql = "SELECT COUNT(DISTINCT o.id) FROM bar_orders o";
 $sql = "
-    SELECT o.id, o.status, o.source, o.paid, o.created_at,
+    SELECT o.id, o.status, o.source, o.payment_method, o.paid, o.created_at,
            o.total, o.subtotal, o.tax_amount, o.voided,
            t.number AS table_number,
            u.name   AS staff_name,
@@ -149,7 +150,7 @@ $orders = $stmt->fetchAll();
         <div class="table-wrap">
             <table>
                 <thead>
-                    <tr><th>#</th><th>Table</th><th>Staff</th><th>Items</th><th>Total</th><th>Status</th><th>Source</th><th>Paid</th><th>Time</th></tr>
+                    <tr><th>#</th><th>Table</th><th>Staff</th><th>Items</th><th>Total</th><th>Status</th><th>Source</th><th>Payment</th><th>Paid</th><th>Time</th></tr>
                 </thead>
                 <tbody>
                     <?php foreach ($orders as $o): ?>
@@ -166,6 +167,7 @@ $orders = $stmt->fetchAll();
                         <td class="font-bold"><?= money($o['total']) ?></td>
                         <td><span class="badge badge-<?= e($o['status']) ?>"><?= e($o['status']) ?></span></td>
                         <td><?= e($o['source']) ?></td>
+                        <td><?= e(paymentMethodLabel($o['payment_method'] ?? 'cash')) ?></td>
                         <td><?= $o['paid'] ? '<span class="text-green-600 font-medium">Yes</span>' : '<span class="text-red-500">No</span>' ?></td>
                         <td class="text-sm text-gray-500"><?= date('H:i', strtotime($o['created_at'])) ?></td>
                     </tr>
@@ -236,6 +238,7 @@ function showOrderDetail(orderId) {
             html += '<div><span class="text-gray-400">Table</span><br><strong>' + esc(o.table_number) + '</strong></div>';
             html += '<div><span class="text-gray-400">Staff</span><br><strong>' + esc(o.staff_name || '—') + '</strong></div>';
             html += '<div><span class="text-gray-400">Source</span><br><strong>' + esc(o.source) + '</strong></div>';
+            html += '<div><span class="text-gray-400">Payment</span><br><strong>' + esc(paymentMethodLabel(o.payment_method)) + '</strong></div>';
             html += '<div><span class="text-gray-400">Status</span><br>' + statusBadge + '</div>';
             html += '<div><span class="text-gray-400">Time</span><br><strong>' + esc(o.created_at) + '</strong></div>';
             html += '</div>';
@@ -309,6 +312,11 @@ function showOrderDetail(orderId) {
         .catch(function() {
             body.innerHTML = '<p class="text-red-500 text-sm">Failed to load order details.</p>';
         });
+}
+
+function paymentMethodLabel(method) {
+    var labels = { cash: 'Cash', pos: 'POS', card: 'Card', online: 'Online' };
+    return labels[method || 'cash'] || 'Cash';
 }
 
 function esc(str) {

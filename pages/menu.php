@@ -50,7 +50,53 @@ function saveMenuImage(array $file, int $itemId, ?string &$error = null): ?strin
         return null;
     }
 
+    // Menu photos only ever render as small grid thumbnails (customer menu,
+    // POS grid) — camera-resolution originals just slow down the QR ordering
+    // page on mobile data/WiFi for no visual benefit.
+    resizeUploadedImage($uploadDir . $filename, $mime);
+
     return $filename;
+}
+
+/** Downscale an uploaded image in place if it's larger than a thumbnail needs to be. */
+function resizeUploadedImage(string $path, string $mime, int $maxDim = 700, int $jpegQuality = 78): void {
+    $create = match ($mime) {
+        'image/jpeg' => 'imagecreatefromjpeg',
+        'image/png'  => 'imagecreatefrompng',
+        'image/gif'  => 'imagecreatefromgif',
+        'image/webp' => 'imagecreatefromwebp',
+        default      => null,
+    };
+    if (!$create || !function_exists($create)) return;
+
+    $src = @$create($path);
+    if (!$src) return;
+
+    $w = imagesx($src);
+    $h = imagesy($src);
+    if (max($w, $h) <= $maxDim) { imagedestroy($src); return; }
+
+    $ratio = $maxDim / max($w, $h);
+    $newW  = (int)round($w * $ratio);
+    $newH  = (int)round($h * $ratio);
+
+    $dst = imagecreatetruecolor($newW, $newH);
+    if ($mime === 'image/png' || $mime === 'image/webp' || $mime === 'image/gif') {
+        imagealphablending($dst, false);
+        imagesavealpha($dst, true);
+    }
+    imagecopyresampled($dst, $src, 0, 0, 0, 0, $newW, $newH, $w, $h);
+
+    match ($mime) {
+        'image/jpeg' => imagejpeg($dst, $path, $jpegQuality),
+        'image/png'  => imagepng($dst, $path, 6),
+        'image/gif'  => imagegif($dst, $path),
+        'image/webp' => imagewebp($dst, $path, $jpegQuality),
+        default      => null,
+    };
+
+    imagedestroy($src);
+    imagedestroy($dst);
 }
 
 if ($action === 'add_category' && $_POST['name']) {
